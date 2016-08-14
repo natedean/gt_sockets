@@ -5,7 +5,7 @@ const app = require('express')();
 // socket.io hookup
 var server = require('http').Server(app);
 var io = require('socket.io')(server);
-server.listen(3001);
+server.listen(3001, () => console.log("socket.io server listening on port 3001"));
 
 const uuid = require('node-uuid');
 const Immutable = require('immutable');
@@ -13,15 +13,17 @@ const Immutable = require('immutable');
 let RoomsMap = Immutable.Map();
 
 const createNewRoom = () => {
-  return Immutable.Map({
-    gameIsInProgress: false,
-    players: Immutable.Map()
-  });
+  let map = Immutable.Map();
+
+  map = map.set('isInProgress', false);
+  map = map.set('players', Immutable.Map());
+
+  return map;
 };
 
-const createPlayer = () => Immutable.Map({
-  correctAnswers: 0,
-  incorrectAnswers: 0
+const createPlayer = (name) => Immutable.Map({
+  name,
+  answers: Immutable.List()
 });
 
 const hasVacancy = (RoomsMap) => RoomsMap.filter(x => x.get('players').size < 2).size > 0;
@@ -36,7 +38,32 @@ const findAvailableRoomId = (RoomsMap) => {
   return RoomsMap.findKey(x => x.get('players').size < 2);
 };
 
+const createResponse = (RoomsMap, roomId, playerId) => {
+  let room = Immutable.Map();
+
+  const opponentId = RoomsMap.getIn([roomId, 'players']).keySeq().filter(x => {
+    return x !== playerId;
+  }).first();
+
+  room = room.set('isInProgress', RoomsMap.getIn([roomId, 'isInProgress']));
+  room = room.set('me', RoomsMap.getIn([roomId, 'players', playerId]));
+
+  if (opponentId) {
+    room = room.set('opponent', RoomsMap.getIn([roomId, 'players', opponentId]));
+  }
+
+  return room.toJS();
+};
+
+const emitStateUpdate = (socket, RoomsMap, roomId, playerId) => {
+    const stateResponse = createResponse(RoomsMap, roomId, playerId);
+
+    socket.emit('stateChange', stateResponse); // the client will optimistically update, but then we need to sync up just in case
+    socket.to(roomId).emit('stateChange', stateResponse); // notify the room!
+}
+
 io.on('connection', function (socket) {
+
   const playerId = socket.client.id; // this really needs to pass the players mongo uid if available
 
   // if there are no empty rooms, add a room.
@@ -46,37 +73,31 @@ io.on('connection', function (socket) {
   let roomId = findAvailableRoomId(RoomsMap);
 
   // add player to the first available room
-  RoomsMap = RoomsMap.setIn([roomId, 'players', playerId], createPlayer());
+  RoomsMap = RoomsMap.setIn([roomId, 'players', playerId], createPlayer('Barry' + Math.floor(Math.random() * 1000)));
 
   // socket, join room
   socket.join(roomId);
 
-  socket.emit('joined', roomId);
-
-  socket.on('answerEvent', (data) => {
-    // update game object!
-    if (data.isCorrect) {
-      RoomsMap = RoomsMap.setIn([roomId, 'players', playerId, 'correctAnswers'], RoomsMap.getIn([roomId, 'players', playerId, 'correctAnswers']) + 1);
-    } else {
-      RoomsMap = RoomsMap.setIn([roomId, 'players', playerId, 'incorrectAnswers'], RoomsMap.getIn([roomId, 'players', playerId, 'incorrectAnswers']) + 1);
-    }
-
-    socket.emit('answerEvent', RoomsMap.get(roomId).toJS()); // the client will optimistically update, but then we need to sync up just in case
-    socket.to(roomId).emit('answerEvent', RoomsMap.get(roomId).toJS()); // notify the room!
-  });
-
-  console.log('somebody joined! RoomsMap.size: ', RoomsMap.size);
-
   // start game, if able
   if (RoomsMap.getIn([roomId, 'players']).size === 2) {
-    RoomsMap = RoomsMap.setIn([roomId, 'gameIsInProgress'], true);
-    socket.emit('startGame', RoomsMap.get(roomId).toJS()); // tell me to startGame
-    socket.to(roomId).emit('startGame', RoomsMap.get(roomId).toJS()); // tell others in room to startGame
+    RoomsMap = RoomsMap.setIn([roomId, 'isInProgress'], true);
   }
+
+  // emit state update
+  emitStateUpdate(socket, RoomsMap, roomId, playerId);
+
+  socket.on('answerEvent', (data) => {
+    RoomsMap = RoomsMap.setIn([roomId, 'players', playerId, 'answers'],
+      RoomsMap.getIn([roomId, 'players', playerId, 'answers']).push(data.isCorrect));
+
+      // emit state update
+    emitStateUpdate(socket, RoomsMap, roomId, playerId);
+  });
 
   socket.on('disconnect', () => {
     RoomsMap = RoomsMap.removeIn([roomId, 'players', playerId]);
-    RoomsMap = RoomsMap.setIn([roomId, 'gameIsInProgress'], false);
-    socket.to(roomId).emit('endGame', RoomsMap.get(roomId).toJS()); // tell others in room to startGame
+    RoomsMap = RoomsMap.setIn([roomId, 'isInProgress'], false);
+      // emit state update
+    emitStateUpdate(socket, RoomsMap, roomId, playerId);
   });
 });
