@@ -38,12 +38,8 @@ const findAvailableRoomId = (RoomsMap) => {
   return RoomsMap.findKey(x => x.get('players').size < 2);
 };
 
-const createResponse = (RoomsMap, roomId, playerId) => {
+const createResponse = (RoomsMap, roomId, playerId, opponentId) => {
   let room = Immutable.Map();
-
-  const opponentId = RoomsMap.getIn([roomId, 'players']).keySeq().filter(x => {
-    return x !== playerId;
-  }).first();
 
   room = room.set('isInProgress', RoomsMap.getIn([roomId, 'isInProgress']));
   room = room.set('me', RoomsMap.getIn([roomId, 'players', playerId]));
@@ -52,14 +48,23 @@ const createResponse = (RoomsMap, roomId, playerId) => {
     room = room.set('opponent', RoomsMap.getIn([roomId, 'players', opponentId]));
   }
 
-  return room.toJS();
+  return room;
 };
 
-const emitStateUpdate = (socket, RoomsMap, roomId, playerId) => {
-    const stateResponse = createResponse(RoomsMap, roomId, playerId);
+const findOpponentId = (RoomsMap, roomId, playerId) => {
+  return RoomsMap.getIn([roomId, 'players']).keySeq().filter(x => {
+    return x !== playerId;
+  }).first();
+}
 
-    socket.emit('stateChange', stateResponse); // the client will optimistically update, but then we need to sync up just in case
-    socket.to(roomId).emit('stateChange', stateResponse); // notify the room!
+const emitStateUpdate = (socket, RoomsMap, roomId, playerId) => {
+    const opponentId = findOpponentId(RoomsMap, roomId, playerId);
+
+    // send player update
+    socket.emit('stateChange', createResponse(RoomsMap, roomId, playerId, opponentId)); // the client will optimistically update, but then we need to sync up just in case
+    
+    // send opponent update
+    socket.to(roomId).emit('stateChange', createResponse(RoomsMap, roomId, opponentId, playerId)); // notify the room!
 }
 
 io.on('connection', function (socket) {
