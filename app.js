@@ -55,17 +55,17 @@ const findOpponentId = (RoomsMap, roomId, playerId) => {
   return RoomsMap.getIn([roomId, 'players']).keySeq().filter(x => {
     return x !== playerId;
   }).first();
-}
+};
 
 const emitStateUpdate = (socket, RoomsMap, roomId, playerId) => {
     const opponentId = findOpponentId(RoomsMap, roomId, playerId);
 
     // send player update
     socket.emit('stateChange', createResponse(RoomsMap, roomId, playerId, opponentId)); // the client will optimistically update, but then we need to sync up just in case
-    
+
     // send opponent update
     socket.to(roomId).emit('stateChange', createResponse(RoomsMap, roomId, opponentId, playerId)); // notify the room!
-}
+};
 
 io.on('connection', function (socket) {
 
@@ -95,7 +95,13 @@ io.on('connection', function (socket) {
     RoomsMap = RoomsMap.setIn([roomId, 'players', playerId, 'answers'],
       RoomsMap.getIn([roomId, 'players', playerId, 'answers']).push(data.isCorrect));
 
-      // emit state update
+    // check for 10 answers, stop game if so
+    if (RoomsMap.getIn([roomId, 'players', playerId, 'answers']).size >= 10 ||
+        RoomsMap.getIn([roomId, 'players', findOpponentId(RoomsMap, roomId, playerId), 'answers']).size >= 10) {
+      RoomsMap = RoomsMap.setIn([roomId, 'isInProgress'], false);
+    }
+
+    // emit state update
     emitStateUpdate(socket, RoomsMap, roomId, playerId);
   });
 
