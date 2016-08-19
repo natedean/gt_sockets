@@ -28,7 +28,7 @@ const createPlayer = (name) => Immutable.Map({
 
 const hasVacancy = (RoomsMap) => RoomsMap.filter(x => x.get('players').size < 2).size > 0;
 
-const addRoomIfNecessary = (RoomsMap, playerId) => {
+const addRoomIfNecessary = (RoomsMap) => {
   if (RoomsMap.size && hasVacancy(RoomsMap)) { return RoomsMap; }
 
   return RoomsMap.set(uuid.v4(), createNewRoom());
@@ -58,7 +58,7 @@ const findOpponentId = (RoomsMap, roomId, playerId) => {
 };
 
 const emitStateUpdate = (socket, RoomsMap, roomId, playerId) => {
-    const opponentId = findOpponentId(RoomsMap, roomId, playerId);
+  const opponentId = findOpponentId(RoomsMap, roomId, playerId);
 
     // send player update
     socket.emit('stateChange', createResponse(RoomsMap, roomId, playerId, opponentId)); // the client will optimistically update, but then we need to sync up just in case
@@ -71,27 +71,36 @@ io.on('connection', function (socket) {
 
   const playerId = socket.client.id; // this really needs to pass the players mongo uid if available
 
-  // if there are no empty rooms, add a room.
-  RoomsMap = addRoomIfNecessary(RoomsMap);
+  let roomId;
 
-  // find the first available room id
-  let roomId = findAvailableRoomId(RoomsMap);
+  socket.on('join', (data) => {
 
-  // add player to the first available room
-  RoomsMap = RoomsMap.setIn([roomId, 'players', playerId], createPlayer('Barry' + Math.floor(Math.random() * 1000)));
+    console.log('joining!');
 
-  // socket, join room
-  socket.join(roomId);
+    // if there are no empty rooms, add a room.
+    RoomsMap = addRoomIfNecessary(RoomsMap);
 
-  // start game, if able
-  if (RoomsMap.getIn([roomId, 'players']).size === 2) {
-    RoomsMap = RoomsMap.setIn([roomId, 'isInProgress'], true);
-  }
+    // find the first available room id
+    roomId = findAvailableRoomId(RoomsMap);
 
-  // emit state update
-  emitStateUpdate(socket, RoomsMap, roomId, playerId);
+    // add player to the first available room
+    RoomsMap = RoomsMap.setIn([roomId, 'players', playerId], createPlayer('Barry' + Math.floor(Math.random() * 1000)));
+
+    // socket, join room
+    socket.join(roomId);
+
+    // start game, if able
+    if (RoomsMap.getIn([roomId, 'players']).size === 2) {
+      RoomsMap = RoomsMap.setIn([roomId, 'isInProgress'], true);
+    }
+
+    // emit state update
+    emitStateUpdate(socket, RoomsMap, roomId, playerId);
+  });
 
   socket.on('answerEvent', (data) => {
+    debugger;
+
     RoomsMap = RoomsMap.setIn([roomId, 'players', playerId, 'answers'],
       RoomsMap.getIn([roomId, 'players', playerId, 'answers']).push(data.isCorrect));
 
@@ -106,9 +115,11 @@ io.on('connection', function (socket) {
   });
 
   socket.on('disconnect', () => {
+    if (!roomId) { return; }
+
     RoomsMap = RoomsMap.removeIn([roomId, 'players', playerId]);
     RoomsMap = RoomsMap.setIn([roomId, 'isInProgress'], false);
-      // emit state update
+
     emitStateUpdate(socket, RoomsMap, roomId, playerId);
   });
 });
