@@ -11,33 +11,23 @@ const Immutable = require('immutable');
 const store = require('./store');
 const helpers = require('./helpers');
 
-let RoomMap;
+let RoomMap = Immutable.Map();
 
 store.RoomMap$.subscribe(x => {
-  RoomMap = x;
+  x.forEach((room, roomKey) => {
+    // if no change to this room, bail!
+    if (room.equals(RoomMap.get(roomKey))) { return; }
+
+    room.get('players').forEach((player, playerKey) => {
+      emitStateUpdate(player.get('socket'), room, playerKey)
+    });
+  });
+
+  RoomMap = x; // cache this for dirty checks
 });
 
-const createResponse = (RoomMap, roomId, playerId, opponentId) => {
-  let room = Immutable.Map();
-
-  room = room.set('isInProgress', RoomMap.getIn([roomId, 'isInProgress']));
-  room = room.set('me', RoomMap.getIn([roomId, 'players', playerId]));
-
-  if (opponentId) {
-    room = room.set('opponent', RoomMap.getIn([roomId, 'players', opponentId]));
-  }
-
-  return room;
-};
-
-const emitStateUpdate = (RoomMap, socket, roomId, playerId) => {
-  const opponentId = helpers.findOpponentId(RoomMap, roomId, playerId);
-
-    // send player update
-    socket.emit('stateChange', createResponse(RoomMap, roomId, playerId, opponentId)); // the client will optimistically update, but then we need to sync up just in case
-
-    // send opponent update
-    socket.to(roomId).emit('stateChange', createResponse(RoomMap, roomId, opponentId, playerId)); // notify the room!
+const emitStateUpdate = (socket, room, playerId) => {
+    socket.emit('stateChange', helpers.createResponse(room, playerId)); // the client will optimistically update, but then we need to sync up just in case
 };
 
 io.on('connection', function (socket) {
@@ -54,27 +44,19 @@ io.on('connection', function (socket) {
     roomId = helpers.findAvailableRoomId(RoomMap);
 
     // add player to the first available room
-    store.addPlayerToRoom$.next({ roomId, playerId });
-
-    /// socket, join room
-    socket.join(roomId);
+    store.addPlayerToRoom$.next({ roomId, playerId, socket });
 
     // start game, if able
     store.startGameIfAble$.next(roomId);
-
-    // emit state update
-    emitStateUpdate(RoomMap, socket, roomId, playerId);
   });
 
   socket.on('answerEvent', (data) => {
     store.setAnswer$.next({ roomId, playerId, isCorrect: data.isCorrect });
-
-    // emit state update
-    emitStateUpdate(RoomMap, socket, roomId, playerId);
   });
 
   socket.on('disconnect', () => {
     if (!roomId) { return; }
+
 
     // RoomMap = RoomMap.removeIn([roomId, 'players', playerId]);
     // RoomMap = RoomMap.setIn([roomId, 'isInProgress'], false);

@@ -15,7 +15,7 @@ const addNewRoomIfNecessary$ = new Rx.Subject().map(() => state => {
 
 const addPlayerToRoom$ = new Rx.Subject().map((payload) => state => {
 	return state = state.setIn([payload.roomId, 'players', payload.playerId],
-		factories.createPlayer('Barry' + Math.floor(Math.random() * 1000)));
+		factories.createPlayer('Barry' + Math.floor(Math.random() * 1000), payload.socket));
 });
 
 const startGameIfAble$ = new Rx.Subject().map((roomId) => state => {
@@ -36,8 +36,16 @@ const RoomMap$ = Rx.Observable.merge(
 	setAnswer$
 ).scan((state, changeFn) => changeFn(state), Immutable.Map());
 
+const getGame$ = (roomId) => {
+	return RoomMap$.map(x => {
+		debugger;
+		x.get(roomId)
+	});
+};
+
 exports.RoomMap$ = RoomMap$;
 exports.addNewRoomIfNecessary$ = addNewRoomIfNecessary$;
 exports.addPlayerToRoom$ = addPlayerToRoom$;
 exports.startGameIfAble$ = startGameIfAble$;
 exports.setAnswer$ = setAnswer$;
+exports.getGame$ = getGame$;
