@@ -12,6 +12,7 @@ exports.createResponse = (room, playerId) => {
 	let response = Immutable.Map();
 
 	response = response.set('isInProgress', room.get('isInProgress'));
+	response = response.set('timer', room.get('timer'));
 
 	// remove sockets from players before we ship them back to the client
 	room = room.set('players', room.get('players').map(x => x.delete('socket')));
