@@ -9,21 +9,37 @@ exports.findAvailableRoomId = (state) => {
 exports.hasVacancy = (state) => state.filter(x => x.get('players').size < 2).size > 0;
 
 exports.createResponse = (room, playerId) => {
-	let response = Immutable.Map();
-
-	response = response.set('isInProgress', room.get('isInProgress'));
-	response = response.set('timer', room.get('timer'));
 
 	// remove sockets from players before we ship them back to the client
 	room = room.set('players', room.get('players').map(x => x.delete('socket')));
-
-	response = response.set('me', room.getIn(['players', playerId]));
+	room = room.set('me', room.getIn(['players', playerId]));
 
 	room = room.deleteIn(['players', playerId]);
 
 	if (room.get('players').size) {
-		response = response.set('opponent', room.get('players').first());
+		room = room.set('opponent', room.get('players').first());
 	}
 
-	return response;
+	room = room.delete('players');
+
+	return room;
+};
+
+exports.shuffle = (array) => {
+	var currentIndex = array.length, temporaryValue, randomIndex;
+
+	// While there remain elements to shuffle...
+	while (0 !== currentIndex) {
+
+		// Pick a remaining element...
+		randomIndex = Math.floor(Math.random() * currentIndex);
+		currentIndex -= 1;
+
+		// And swap it with the current element.
+		temporaryValue = array[currentIndex];
+		array[currentIndex] = array[randomIndex];
+		array[randomIndex] = temporaryValue;
+	}
+
+	return array;
 };
