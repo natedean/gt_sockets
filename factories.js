@@ -7,6 +7,8 @@ exports.createNewRoom = () => {
 
 	map = map.set('isInProgress', false);
 	map = map.set('players', Immutable.Map());
+	map = map.set('timer', 10);
+	map = map.set('questionIds', Immutable.List());
 
 	return map;
 };

@@ -19,11 +19,10 @@ const addPlayerToRoom$ = new Rx.Subject().map(payload => state => {
 		factories.createPlayer('Barry' + Math.floor(Math.random() * 1000), payload.socket));
 });
 
-const startGameIfAble$ = new Rx.Subject().map((roomId) => state => {
-	if (state.getIn([roomId, 'players']).size !== 2) { return state; }
+const startGameIfAble$ = new Rx.Subject().map((gameId) => state => {
+	if (state.getIn([gameId, 'players']).size !== 2) { return state; }
 
-	state = state.setIn([roomId, 'isInProgress'], true);
-	state = state.setIn([roomId, 'question'], gameMethods.getRandQuestion());
+	state = state.set(gameId, gameMethods.startNewGame(state.get(gameId)));
 
 	return state;
 });
@@ -32,18 +31,25 @@ const setAnswer$ = new Rx.Subject().map(payload => state => {
 	state = state.setIn([payload.roomId, 'players', payload.playerId, 'answers'],
 		state.getIn([payload.roomId, 'players', payload.playerId, 'answers']).push(payload.isCorrect));
 
-	// check to see if both players have scored...
+	return state;
+});
 
+const monitorRoomStatesTimer$ = Rx.Observable.interval(1000).map(() => state => {
+	state = state.map(game => {
+		if (!game.get('isInProgress')) { return game; } // don't sync games that haven't started
 
+		return game = gameMethods.syncRoomState(game);
+	});
 
-	state = state.setIn([roomId, 'question'], gameMethods.getRandQuestion());
+	return state;
 });
 
 const RoomMap$ = Rx.Observable.merge(
 	addNewRoomIfNecessary$,
 	addPlayerToRoom$,
 	startGameIfAble$,
-	setAnswer$
+	setAnswer$,
+	monitorRoomStatesTimer$
 ).scan((state, changeFn) => changeFn(state), Immutable.Map());
 
 exports.RoomMap$ = RoomMap$;
