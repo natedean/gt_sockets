@@ -1,6 +1,7 @@
 'use strict';
 
 const Immutable = require('immutable');
+const gameMethods = require('./game-methods');
 
 exports.findAvailableRoomId = (state) => {
 	return state.findKey(x => x.get('players').size < 2);
@@ -21,6 +22,10 @@ exports.createResponse = (room, playerId) => {
 	}
 
 	room = room.delete('players');
+
+	if (!room.get('isInProgress')) { return room; }
+
+	room = gameMethods.setPlayerMessages(room);
 
 	return room;
 };

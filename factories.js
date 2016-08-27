@@ -16,5 +16,6 @@ exports.createNewRoom = () => {
 exports.createPlayer = (name, socket) => Immutable.Map({
 	name,
 	answers: Immutable.List(),
-	socket: socket
+	socket: socket,
+	message: ''
 });
