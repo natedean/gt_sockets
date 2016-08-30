@@ -66,15 +66,10 @@ exports.syncRoomState = (game) => {
 		game = game.set('timer', 0);
 	}
 
-	// between 0 and -5 is like reflection time... displaying the correct answer... and maybe some game stats or something...
-    // ... maybe display like a bonus point award ... or whatever
-
 	if (game.get('timer') <= -5) { // this round is over. reset timer, add new new question.
 		game = game.set('timer', 10);
 		game = addNewQuestion(game);
 	}
-
-	// game = game.set('timer', game.get('timer') - 1);
 
 	return game;
 };
